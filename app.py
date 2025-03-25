@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, List
-from pinecone import Pinecone
+import Pinecone
 import os
 from sentence_transformers import SentenceTransformer
 import requests
