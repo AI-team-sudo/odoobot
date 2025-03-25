@@ -1,0 +1,8 @@
+fastapi==0.104.1
+uvicorn==0.24.1
+pydantic==2.4.2
+pinecone
+sentence-transformers==2.2.2
+requests
+huggingface-hub
+python-dotenv
