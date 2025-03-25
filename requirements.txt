@@ -3,7 +3,7 @@ uvicorn
 pydantic>=2.0.0
 pydantic-settings>=2.0.0
 python-dotenv
-pinecone-client
+pinecone
 sentence-transformers
 requests
 huggingface-hub
