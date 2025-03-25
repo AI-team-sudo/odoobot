@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Response
-from pydantic import BaseModel, BaseSettings
+from pydantic import BaseModel
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional, List
 from pinecone import Pinecone
 import os
@@ -14,8 +15,7 @@ class Settings(BaseSettings):
     token: str
     port: int = 10000
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env")
 
 def get_settings():
     return Settings()
