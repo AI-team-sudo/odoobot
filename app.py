@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, BaseSettings
 from typing import Optional, List
 from pinecone import Pinecone
 import os
@@ -7,75 +7,113 @@ from sentence_transformers import SentenceTransformer
 import requests
 from huggingface_hub import InferenceClient
 import re
+import uvicorn
 
-settings = get_settings()
+class Settings(BaseSettings):
+    pinecone_key: str
+    token: str
+    port: int = 10000
+
+    class Config:
+        env_file = ".env"
+
+def get_settings():
+    return Settings()
+
+# Initialize settings
+try:
+    settings = get_settings()
+except Exception as e:
+    raise Exception(f"Failed to load settings: {str(e)}")
+
 # Initialize FastAPI
-app = FastAPI()
+app = FastAPI(
+    title="SQL Query Generator API",
+    description="API for generating SQL queries from natural language questions",
+    version="1.0.0"
+)
 
 # Initialize Pinecone
-pc = Pinecone(api_key=settings.pinecone_key)
-index = pc.Index("odoobot")
+try:
+    pc = Pinecone(api_key=settings.pinecone_key)
+    index = pc.Index("odoobot")
+except Exception as e:
+    raise Exception(f"Failed to initialize Pinecone: {str(e)}")
 
-# GTE-large model for embeddings
-embedding_model = SentenceTransformer('thenlper/gte-large')
+# Initialize GTE-large model for embeddings
+try:
+    embedding_model = SentenceTransformer('thenlper/gte-large')
+except Exception as e:
+    raise Exception(f"Failed to load embedding model: {str(e)}")
 
-# Initialize Hugging Face client with API key directly
-client = InferenceClient(
-    model = "mistralai/Mixtral-8x7B-Instruct-v0.1",
-    token = settings.token
-)
+# Initialize Hugging Face client
+try:
+    client = InferenceClient(
+        model="mistralai/Mixtral-8x7B-Instruct-v0.1",
+        token=settings.token
+    )
+except Exception as e:
+    raise Exception(f"Failed to initialize Hugging Face client: {str(e)}")
 
 class Query(BaseModel):
     question: str
 
 def get_embedding(text: str) -> List[float]:
     """Generate embeddings for input text"""
-    embedding = embedding_model.encode(text)
-    return embedding.tolist()
+    try:
+        embedding = embedding_model.encode(text)
+        return embedding.tolist()
+    except Exception as e:
+        raise Exception(f"Error generating embedding: {str(e)}")
 
 def get_relevant_schema(question: str) -> str:
     """Retrieve relevant schema from Pinecone"""
-    question_embedding = get_embedding(question)
+    try:
+        question_embedding = get_embedding(question)
 
-    results = index.query(
-        vector=question_embedding,
-        top_k=5,
-        include_metadata=True
-    )
+        results = index.query(
+            vector=question_embedding,
+            top_k=5,
+            include_metadata=True
+        )
 
-    relevant_schema = ""
-    for match in results['matches']:
-        relevant_schema += match.metadata['schema'] + "\n"
+        relevant_schema = ""
+        for match in results['matches']:
+            relevant_schema += match.metadata['schema'] + "\n"
 
-    return relevant_schema
+        return relevant_schema
+    except Exception as e:
+        raise Exception(f"Error retrieving schema: {str(e)}")
 
 def extract_sql_query(text: str) -> str:
     """Extract pure SQL query from the response"""
-    # Try to find SQL query between code blocks
-    code_block_match = re.search(r'```(?:sql|vbnet)?\n(.*?)\n```', text, re.DOTALL)
-    if code_block_match:
-        return code_block_match.group(1).strip()
+    try:
+        # Try to find SQL query between code blocks
+        code_block_match = re.search(r'```(?:sql|vbnet)?\n(.*?)\n```', text, re.DOTALL)
+        if code_block_match:
+            return code_block_match.group(1).strip()
 
-    # If no code blocks, try to find the first statement that looks like SQL
-    sql_patterns = [
-        r'SELECT.*?;',
-        r'INSERT.*?;',
-        r'UPDATE.*?;',
-        r'DELETE.*?;'
-    ]
+        # If no code blocks, try to find the first statement that looks like SQL
+        sql_patterns = [
+            r'SELECT.*?;',
+            r'INSERT.*?;',
+            r'UPDATE.*?;',
+            r'DELETE.*?;'
+        ]
 
-    for pattern in sql_patterns:
-        sql_match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-        if sql_match:
-            return sql_match.group(0).strip()
+        for pattern in sql_patterns:
+            sql_match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+            if sql_match:
+                return sql_match.group(0).strip()
 
-    # If no SQL-like statements found, return the cleaned text
-    return text.strip()
+        # If no SQL-like statements found, return the cleaned text
+        return text.strip()
+    except Exception as e:
+        raise Exception(f"Error extracting SQL query: {str(e)}")
 
 def generate_sql_query(question: str, schema: str) -> str:
-    """Generate SQL query using Mixtral model via Hugging Face API"""
+    """Generate SQL query using Mixtral model"""
     try:
-        # Construct the prompt
         prompt = f"""<s>[INST] You are a SQL expert. Given the following database schema:
         {schema}
 
@@ -84,7 +122,6 @@ def generate_sql_query(question: str, schema: str) -> str:
 
         Important: Return ONLY the raw SQL query. No explanations, no code blocks, no formatting. Just the SQL query that starts with SELECT, INSERT, UPDATE, or DELETE and ends with a semicolon. [/INST]"""
 
-        # Generate response using the Hugging Face API
         response = client.text_generation(
             prompt,
             max_new_tokens=1000,
@@ -94,15 +131,13 @@ def generate_sql_query(question: str, schema: str) -> str:
             do_sample=True
         )
 
-        # Extract and clean SQL query from response
         raw_response = response.split("[/INST]")[-1].strip()
         clean_query = extract_sql_query(raw_response)
 
         return clean_query
 
     except Exception as e:
-        print(f"Error in generate_sql_query: {e}")
-        raise
+        raise Exception(f"Error generating SQL query: {str(e)}")
 
 @app.post("/generate-sql/")
 async def generate_sql(query: Query):
@@ -110,18 +145,26 @@ async def generate_sql(query: Query):
     try:
         relevant_schema = get_relevant_schema(query.question)
         sql_query = generate_sql_query(query.question, relevant_schema)
-        # Return plain text response
         return Response(content=sql_query, media_type="text/plain")
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy"}
+
 @app.on_event("startup")
 async def startup_event():
     """Startup event handler"""
-    print("Initializing API...")
+    print("API initialized successfully")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Shutdown event handler"""
-    print("Shutting down API...")
+    print("API shutting down")
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", settings.port))
+    uvicorn.run(app, host="0.0.0.0", port=port)
