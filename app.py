@@ -164,7 +164,3 @@ async def startup_event():
 async def shutdown_event():
     """Shutdown event handler"""
     print("API shutting down")
-
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", settings.port))
-    uvicorn.run(app, host="0.0.0.0", port=port)
