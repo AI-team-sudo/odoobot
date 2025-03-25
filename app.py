@@ -8,6 +8,7 @@ import requests
 from huggingface_hub import InferenceClient
 import re
 
+settings = get_settings()
 # Initialize FastAPI
 app = FastAPI()
 
