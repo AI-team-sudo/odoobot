@@ -61,10 +61,7 @@ def get_embedding(text: str) -> List[float]:
     """Generate embeddings using HuggingFace API"""
     try:
         # Get embeddings through the API
-        response = embedding_client.feature_extraction(
-            text,
-            parameters={"wait_for_model": True}
-        )
+        response = embedding_client.feature_extraction(text)
 
         # Convert to list if it's not already
         if isinstance(response, np.ndarray):
@@ -171,3 +168,11 @@ async def startup_event():
 async def shutdown_event():
     """Shutdown event handler"""
     print("API shutting down")
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=settings.port,
+        reload=True
+    )
