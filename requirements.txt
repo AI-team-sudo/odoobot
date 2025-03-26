@@ -12,3 +12,4 @@ scipy==1.11.3
 scikit-learn==1.3.2
 requests
 huggingface-hub
+pydantic-settings
